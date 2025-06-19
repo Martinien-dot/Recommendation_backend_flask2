@@ -336,3 +336,121 @@ def get_user_review(movie_id: int) -> Union[Dict[str, Any], Tuple[Dict[str, str]
         "rating": review.rating,
         "timestamp": review.timestamp.isoformat()
     })
+
+
+@review_bp.route('/all', methods=['GET'])
+def get_all_reviews() -> Union[Dict[str, Any], Tuple[Dict[str, str], int]]:
+    """
+    Récupère tous les avis avec pagination
+    ---
+    tags:
+      - Avis
+    parameters:
+      - name: page
+        in: query
+        type: integer
+        required: false
+        default: 1
+        description: Numéro de page
+      - name: per_page
+        in: query
+        type: integer
+        required: false
+        default: 10
+        description: Nombre d'avis par page
+      - name: sort
+        in: query
+        type: string
+        required: false
+        enum: [newest, oldest, highest, lowest]
+        default: newest
+        description: Ordre de tri
+    responses:
+      200:
+        description: Liste paginée de tous les avis
+        schema:
+          type: object
+          properties:
+            reviews:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  user_id:
+                    type: integer
+                  movie_id:
+                    type: integer
+                  movie_title:
+                    type: string
+                  review_text:
+                    type: string
+                  rating:
+                    type: number
+                  timestamp:
+                    type: string
+                    format: date-time
+            pagination:
+              type: object
+              properties:
+                total:
+                  type: integer
+                pages:
+                  type: integer
+                current_page:
+                  type: integer
+                per_page:
+                  type: integer
+      500:
+        description: Erreur serveur
+    """
+    try:
+        # Récupération des paramètres de pagination
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        
+        # Récupération du paramètre de tri
+        sort = request.args.get('sort', 'newest')
+        
+        # Construction de la requête de base
+        query = Review.query.join(Movie, Review.movie_id == Movie.id)
+        
+        # Application du tri
+        if sort == 'newest':
+            query = query.order_by(Review.timestamp.desc())
+        elif sort == 'oldest':
+            query = query.order_by(Review.timestamp.asc())
+        elif sort == 'highest':
+            query = query.order_by(Review.rating.desc())
+        elif sort == 'lowest':
+            query = query.order_by(Review.rating.asc())
+        
+        # Exécution de la requête paginée
+        paginated_reviews = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        # Formatage des résultats
+        reviews_data = []
+        for review in paginated_reviews.items:
+            reviews_data.append({
+                'id': review.id,
+                'user_id': review.user_id,
+                'movie_id': review.movie_id,
+                'movie_title': review.movie.title if review.movie else 'Film inconnu',
+                'review_text': review.review_text,
+                'rating': review.rating,
+                'timestamp': review.timestamp.isoformat()
+            })
+        
+        return jsonify({
+            'reviews': reviews_data,
+            'pagination': {
+                'total': paginated_reviews.total,
+                'pages': paginated_reviews.pages,
+                'current_page': paginated_reviews.page,
+                'per_page': paginated_reviews.per_page
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

@@ -587,3 +587,47 @@ def test_auth() -> Dict[str, Any]:
     """
     user_id = get_jwt_identity()
     return jsonify({"message": "Test réussi", "user_id": user_id})
+
+@recommendation_bp.route('/admin/stats', methods=['GET'])
+def get_global_stats() -> Union[Dict[str, Any], Tuple[Dict[str, str], int]]:
+    """
+    Récupère les statistiques globales pour l'administration
+    ---
+    tags:
+      - Administration
+    security:
+      - JWT: []
+    responses:
+      200:
+        description: Statistiques globales de l'application
+        schema:
+          type: object
+          properties:
+            total_movies:
+              type: integer
+            total_reviews:
+              type: integer
+            total_ratings:
+              type: integer
+            avg_rating:
+              type: number
+      500:
+        description: Erreur lors du calcul des statistiques
+    """
+    try:
+        from sqlalchemy import func
+
+        total_movies = db.session.query(func.count(Movie.id)).scalar()
+        total_reviews = db.session.query(func.count(Review.id)).scalar()
+        total_ratings = db.session.query(func.count(Rating.id)).scalar()
+        avg_rating = db.session.query(func.avg(Rating.rating)).scalar() or 0.0
+
+        return jsonify({
+            'total_movies': total_movies,
+            'total_reviews': total_reviews,
+            'total_ratings': total_ratings,
+            'avg_rating': round(avg_rating, 2)
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

@@ -9,4 +9,7 @@ db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
 jwt = JWTManager()  # Ajout de JWT
-cors = CORS()  # Ajout de CORS
+cors = CORS(
+    resources={r"/*": {"origins": ["http://localhost:3000", "http://localhost:64110"]}},
+    supports_credentials=True
+)  # Ajout de CORS

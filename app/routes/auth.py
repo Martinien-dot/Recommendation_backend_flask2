@@ -173,7 +173,7 @@ def login() -> Tuple[Dict[str, Union[str, int]], int]:
         return jsonify({"error": "Identifiants invalides"}), 401
 
     access_token = create_access_token(identity=str(user.id))
-    return jsonify({"message": "Connexion réussie", "token": access_token, "id": user.id}), 200
+    return jsonify({"message": "Connexion réussie", "token": access_token, "id": user.id, "role_id":user.role_id}), 200
 
 @auth_bp.route('/protected', methods=['GET'])
 @jwt_required()
