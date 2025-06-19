@@ -1,0 +1,24 @@
+# Ignorer le fichier .env contenant les variables sensibles
+.env
+
+# Ignorer les fichiers et dossiers Python inutiles
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignorer les fichiers de logs et bases de données locales
+*.log
+instance/
+*.sqlite3
+
+# Ignorer les dépendances Python installées
+venv/
+env/
+*.egg-info/
+
+# Ignorer les fichiers générés par l'IDE
+.vscode/
+.idea/
+
+static/
