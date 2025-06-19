@@ -7,38 +7,93 @@ from app.models.review import Review
 from app.services.recommendation_service import RecommendationService
 from app.models import Movie, User
 from app.extensions import db
+from typing import List, Dict, Any, Tuple, Union, Optional
 
 recommendation_bp = Blueprint('recommendations', __name__, url_prefix='/recommendations')
 recommendation_service = RecommendationService()
 
-
 @recommendation_bp.route('/', methods=['GET'])
 @jwt_required()
-def get_recommendations():
+def get_recommendations() -> Union[Dict[str, Any], Tuple[Dict[str, str], int]]:
     """
-    Récupère les recommandations pour l'utilisateur connecté
+    Récupère les recommandations personnalisées pour l'utilisateur connecté
+    ---
+    tags:
+      - Recommandations
+    security:
+      - JWT: []
+    parameters:
+      - name: method
+        in: query
+        type: string
+        enum: [hybrid, collaborative, content]
+        default: hybrid
+        description: Méthode de recommandation à utiliser
+      - name: limit
+        in: query
+        type: integer
+        default: 10
+        description: Nombre maximum de recommandations à retourner
+      - name: refresh
+        in: query
+        type: boolean
+        default: false
+        description: Force la régénération des recommandations
+    responses:
+      200:
+        description: Liste des films recommandés
+        schema:
+          type: object
+          properties:
+            recommendations:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  title:
+                    type: string
+                  release_year:
+                    type: integer
+                  rating:
+                    type: number
+                  description:
+                    type: string
+                  poster_url:
+                    type: string
+                  recommendation_score:
+                    type: number
+                  director:
+                    type: string
+                  genres:
+                    type: array
+                    items:
+                      type: string
+            method:
+              type: string
+            total:
+              type: integer
+      500:
+        description: Erreur lors de la génération des recommandations
     """
     user_id = get_jwt_identity()
-    method = request.args.get('method', 'hybrid')  # hybrid, collaborative, content
+    method = request.args.get('method', 'hybrid')
     limit = int(request.args.get('limit', 10))
     
     try:
-        # Générer de nouvelles recommandations si demandé
         if request.args.get('refresh', 'false').lower() == 'true':
             recommendations = recommendation_service.generate_recommendations_for_user(
                 user_id, method, limit
             )
         else:
-            # Récupérer les recommandations existantes
             recommendations = recommendation_service.get_user_recommendations(user_id, limit)
             
-            # Si aucune recommandation n'existe, en générer
             if not recommendations:
                 recommendations = recommendation_service.generate_recommendations_for_user(
                     user_id, method, limit
                 )
         
-        # Enrichir avec les détails des films
         recommended_movies = []
         for movie_id, score in recommendations:
             movie = Movie.query.get(movie_id)
@@ -64,12 +119,43 @@ def get_recommendations():
     except Exception as e:
         return jsonify({'error': f'Erreur lors de la génération des recommandations: {str(e)}'}), 500
 
-
 @recommendation_bp.route('/similar-users', methods=['GET'])
 @jwt_required()
-def get_similar_users():
+def get_similar_users() -> Union[Dict[str, Any], Tuple[Dict[str, str], int]]:
     """
-    Trouve les utilisateurs similaires à l'utilisateur connecté
+    Trouve les utilisateurs ayant des goûts similaires
+    ---
+    tags:
+      - Recommandations
+    security:
+      - JWT: []
+    parameters:
+      - name: limit
+        in: query
+        type: integer
+        default: 5
+        description: Nombre maximum d'utilisateurs similaires à retourner
+    responses:
+      200:
+        description: Liste des utilisateurs similaires
+        schema:
+          type: object
+          properties:
+            similar_users:
+              type: array
+              items:
+                type: object
+                properties:
+                  user_id:
+                    type: integer
+                  username:
+                    type: string
+                  similarity_score:
+                    type: number
+            message:
+              type: string
+      500:
+        description: Erreur lors du calcul des similarités
     """
     user_id = get_jwt_identity()
     limit = int(request.args.get('limit', 5))
@@ -91,10 +177,8 @@ def get_similar_users():
                 if similarity > 0:
                     similarities[other_user_id] = similarity
         
-        # Trier par similarité décroissante
         similar_users = sorted(similarities.items(), key=lambda x: x[1], reverse=True)[:limit]
         
-        # Enrichir avec les détails des utilisateurs
         result = []
         for other_user_id, similarity in similar_users:
             user = User.query.get(other_user_id)
@@ -110,24 +194,50 @@ def get_similar_users():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
 @recommendation_bp.route('/user-preferences', methods=['GET'])
 @jwt_required()
-def get_user_preferences():
+def get_user_preferences() -> Union[Dict[str, Any], Tuple[Dict[str, str], int]]:
     """
     Analyse les préférences de l'utilisateur connecté
+    ---
+    tags:
+      - Recommandations
+    security:
+      - JWT: []
+    responses:
+      200:
+        description: Préférences de l'utilisateur
+        schema:
+          type: object
+          properties:
+            preferences:
+              type: object
+              properties:
+                top_genres:
+                  type: object
+                  additionalProperties:
+                    type: number
+                favorite_directors:
+                  type: object
+                  additionalProperties:
+                    type: number
+                keyword_count:
+                  type: integer
+            total_interactions:
+              type: integer
+      500:
+        description: Erreur lors de l'analyse des préférences
     """
     user_id = get_jwt_identity()
     
     try:
         preferences = recommendation_service.get_user_preferences(user_id)
         
-        # Formater la réponse
         formatted_preferences = {
             'top_genres': dict(sorted(preferences['genres'].items(), 
                                 key=lambda x: x[1], reverse=True)[:10]),
             'favorite_directors': dict(sorted(preferences['directors'].items(), 
-                                            key=lambda x: x[1], reverse=True)[:5]),
+                                      key=lambda x: x[1], reverse=True)[:5]),
             'keyword_count': len(set(preferences['keywords']))
         }
         
@@ -139,38 +249,84 @@ def get_user_preferences():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-#ceci marche
 @recommendation_bp.route('/popular', methods=['GET'])
-def get_popular_movies():
+def get_popular_movies() -> Union[Dict[str, Any], Tuple[Dict[str, str], int]]:
     """
-    Récupère les films populaires basés sur les interactions
+    Récupère les films les plus populaires
+    ---
+    tags:
+      - Recommandations
+    parameters:
+      - name: limit
+        in: query
+        type: integer
+        default: 10
+        description: Nombre maximum de films à retourner
+    responses:
+      200:
+        description: Liste des films populaires
+        schema:
+          type: object
+          properties:
+            popular_movies:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  title:
+                    type: string
+                  release_year:
+                    type: integer
+                  rating:
+                    type: number
+                  description:
+                    type: string
+                  poster_url:
+                    type: string
+                  video_path:
+                    type: string
+                  avg_user_rating:
+                    type: number
+                  rating_count:
+                    type: integer
+                  like_count:
+                    type: integer
+                  review_count:
+                    type: integer
+                  director:
+                    type: string
+                  genres:
+                    type: array
+                    items:
+                      type: string
+            total:
+              type: integer
+      500:
+        description: Erreur lors du calcul des films populaires
     """
     limit = int(request.args.get('limit', 10))
     
     try:
-        # Calculer la popularité basée sur les ratings, likes et reviews
         from sqlalchemy import func
         
-        # Sous-requête pour les ratings moyens
         avg_ratings = db.session.query(
             Rating.movie_id,
             func.avg(Rating.rating).label('avg_rating'),
             func.count(Rating.id).label('rating_count')
         ).group_by(Rating.movie_id).subquery()
         
-        # Sous-requête pour les likes
         like_counts = db.session.query(
             Like.movie_id,
             func.count(Like.id).label('like_count')
         ).group_by(Like.movie_id).subquery()
         
-        # Sous-requête pour les reviews
         review_counts = db.session.query(
             Review.movie_id,
             func.count(Review.id).label('review_count')
         ).group_by(Review.movie_id).subquery()
         
-        # Requête principale pour obtenir les films populaires
         popular_movies = db.session.query(Movie)\
             .outerjoin(avg_ratings, Movie.id == avg_ratings.c.movie_id)\
             .outerjoin(like_counts, Movie.id == like_counts.c.movie_id)\
@@ -191,7 +347,7 @@ def get_popular_movies():
         
         result = []
         for movie_data in popular_movies:
-            movie = movie_data[0]  # L'objet Movie
+            movie = movie_data[0]
             result.append({
                 'id': movie.id,
                 'title': movie.title,
@@ -199,7 +355,7 @@ def get_popular_movies():
                 'rating': movie.rating,
                 'description': movie.description,
                 'poster_url': movie.poster_url,
-                "video_path":movie.video_file_path,
+                "video_path": movie.video_file_path,
                 'avg_user_rating': round(movie_data[1] or 0, 2),
                 'rating_count': movie_data[2] or 0,
                 'like_count': movie_data[3] or 0,
@@ -216,27 +372,76 @@ def get_popular_movies():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-#ceci marche
 @recommendation_bp.route('/by-genre/<genre_name>', methods=['GET'])
-def get_recommendations_by_genre(genre_name):
+def get_recommendations_by_genre(genre_name: str) -> Union[Dict[str, Any], Tuple[Dict[str, str], int]]:
     """
-    Recommandations basées sur un genre spécifique
+    Récupère les recommandations basées sur un genre spécifique
+    ---
+    tags:
+      - Recommandations
+    parameters:
+      - name: genre_name
+        in: path
+        type: string
+        required: true
+        description: Nom du genre
+      - name: limit
+        in: query
+        type: integer
+        default: 10
+        description: Nombre maximum de films à retourner
+    responses:
+      200:
+        description: Liste des films recommandés pour le genre
+        schema:
+          type: object
+          properties:
+            recommendations:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  title:
+                    type: string
+                  release_year:
+                    type: integer
+                  rating:
+                    type: number
+                  description:
+                    type: string
+                  poster_url:
+                    type: string
+                  popularity_score:
+                    type: number
+                  director:
+                    type: string
+                  genres:
+                    type: array
+                    items:
+                      type: string
+            genre:
+              type: string
+            total:
+              type: integer
+      404:
+        description: Genre non trouvé
+      500:
+        description: Erreur lors de la génération des recommandations
     """
     limit = int(request.args.get('limit', 10))
     
     try:
         from app.models import Genre
         
-        # Trouver le genre
         genre = Genre.query.filter_by(name=genre_name).first()
         if not genre:
             return jsonify({'error': 'Genre non trouvé'}), 404
         
-        # Obtenir les films du genre triés par popularité
         movies_in_genre = []
         for movie in genre.movies:
             score = 0
-            # Calculer un score basé sur les interactions
             ratings = Rating.query.filter_by(movie_id=movie.id).all()
             likes = Like.query.filter_by(movie_id=movie.id).count()
             reviews = Review.query.filter_by(movie_id=movie.id).count()
@@ -249,7 +454,6 @@ def get_recommendations_by_genre(genre_name):
             
             movies_in_genre.append((movie, score))
         
-        # Trier par score décroissant
         movies_in_genre.sort(key=lambda x: x[1], reverse=True)
         
         result = []
@@ -275,12 +479,28 @@ def get_recommendations_by_genre(genre_name):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
 @recommendation_bp.route('/admin/generate-all', methods=['POST'])
 @jwt_required()
-def generate_all_recommendations():
+def generate_all_recommendations() -> Union[Dict[str, str], Tuple[Dict[str, str], int]]:
     """
     Génère les recommandations pour tous les utilisateurs (admin seulement)
+    ---
+    tags:
+      - Recommandations
+    security:
+      - JWT: []
+    responses:
+      200:
+        description: Succès de l'opération
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+      403:
+        description: Accès refusé (non admin)
+      500:
+        description: Erreur lors de la génération des recommandations
     """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
@@ -294,13 +514,35 @@ def generate_all_recommendations():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
-#ceci marche
 @recommendation_bp.route('/stats', methods=['GET'])
 @jwt_required()
-def get_recommendation_stats():
+def get_recommendation_stats() -> Union[Dict[str, Any], Tuple[Dict[str, str], int]]:
     """
-    Statistiques sur les recommandations de l'utilisateur
+    Récupère les statistiques d'interaction de l'utilisateur
+    ---
+    tags:
+      - Recommandations
+    security:
+      - JWT: []
+    responses:
+      200:
+        description: Statistiques de l'utilisateur
+        schema:
+          type: object
+          properties:
+            stats:
+              type: object
+              properties:
+                total_ratings:
+                  type: integer
+                total_likes:
+                  type: integer
+                total_reviews:
+                  type: integer
+                avg_rating_given:
+                  type: number
+      500:
+        description: Erreur lors du calcul des statistiques
     """
     user_id = get_jwt_identity()
     
@@ -312,7 +554,6 @@ def get_recommendation_stats():
             'avg_rating_given': 0
         }
         
-        # Calculer la note moyenne donnée par l'utilisateur
         user_ratings = Rating.query.filter_by(user_id=user_id).all()
         if user_ratings:
             total_rating = sum(r.rating for r in user_ratings if r.rating)
@@ -322,11 +563,27 @@ def get_recommendation_stats():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
-
 
 @recommendation_bp.route('/test', methods=['GET'])
 @jwt_required()
-def test_auth():
+def test_auth() -> Dict[str, Any]:
+    """
+    Endpoint de test d'authentification
+    ---
+    tags:
+      - Recommandations
+    security:
+      - JWT: []
+    responses:
+      200:
+        description: Test réussi
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            user_id:
+              type: integer
+    """
     user_id = get_jwt_identity()
     return jsonify({"message": "Test réussi", "user_id": user_id})

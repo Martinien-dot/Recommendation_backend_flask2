@@ -3,18 +3,68 @@ from app.extensions import db
 from app.models.user import User
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash
+from typing import List, Dict, Any, Tuple, Union, Optional
 
 user_bp = Blueprint('user', __name__, url_prefix='/users')
 
 @user_bp.route('/', methods=['GET'])
-def get_all_users():
-    """Récupérer tous les utilisateurs"""
+def get_all_users() -> List[Dict[str, Union[int, str]]]:
+    """
+    Récupère tous les utilisateurs (sans informations sensibles)
+    ---
+    tags:
+      - Utilisateurs
+    responses:
+      200:
+        description: Liste de tous les utilisateurs
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: ID de l'utilisateur
+              username:
+                type: string
+                description: Nom d'utilisateur
+              email:
+                type: string
+                description: Adresse email
+    security: []  # Aucune authentification requise
+    """
     users = User.query.all()
     return jsonify([{"id": u.id, "username": u.username, "email": u.email} for u in users])
 
 @user_bp.route('/<int:id>', methods=['GET'])
-def get_user(id):
-    """Récupérer un utilisateur spécifique"""
+def get_user(id: int) -> Union[Dict[str, Union[int, str]], Tuple[Dict[str, str], int]]:
+    """
+    Récupère un utilisateur spécifique
+    ---
+    tags:
+      - Utilisateurs
+    parameters:
+      - name: id
+        in: path
+        type: integer
+        required: true
+        description: ID de l'utilisateur
+    responses:
+      200:
+        description: Détails de l'utilisateur
+        schema:
+          type: object
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            email:
+              type: string
+      404:
+        description: Utilisateur non trouvé
+    security: []  # Aucune authentification requise
+    """
     user = User.query.get(id)
     if not user:
         return jsonify({"error": "Utilisateur non trouvé"}), 404
@@ -22,8 +72,45 @@ def get_user(id):
 
 @user_bp.route('/<int:id>', methods=['PUT'])
 @jwt_required()
-def update_user(id):
-    """Mettre à jour un utilisateur (seulement son propre compte)"""
+def update_user(id: int) -> Union[Dict[str, str], Tuple[Dict[str, str], int]]:
+    """
+    Met à jour les informations d'un utilisateur (uniquement son propre compte)
+    ---
+    tags:
+      - Utilisateurs
+    security:
+      - JWT: []
+    parameters:
+      - name: id
+        in: path
+        type: integer
+        required: true
+        description: ID de l'utilisateur à mettre à jour
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            username:
+              type: string
+              example: nouveau_username
+            email:
+              type: string
+              example: nouveau@email.com
+            password:
+              type: string
+              example: nouveauMotDePasse
+    responses:
+      200:
+        description: Utilisateur mis à jour
+      400:
+        description: Email déjà utilisé
+      403:
+        description: Action non autorisée
+      404:
+        description: Utilisateur non trouvé
+    """
     current_user_id = get_jwt_identity()
     if current_user_id != id:
         return jsonify({"error": "Action non autorisée"}), 403
@@ -48,8 +135,28 @@ def update_user(id):
 
 @user_bp.route('/<int:id>', methods=['DELETE'])
 @jwt_required()
-def delete_user(id):
-    """Supprimer un utilisateur (seulement son propre compte)"""
+def delete_user(id: int) -> Union[Dict[str, str], Tuple[Dict[str, str], int]]:
+    """
+    Supprime un utilisateur (uniquement son propre compte)
+    ---
+    tags:
+      - Utilisateurs
+    security:
+      - JWT: []
+    parameters:
+      - name: id
+        in: path
+        type: integer
+        required: true
+        description: ID de l'utilisateur à supprimer
+    responses:
+      200:
+        description: Utilisateur supprimé
+      403:
+        description: Action non autorisée
+      404:
+        description: Utilisateur non trouvé
+    """
     current_user_id = get_jwt_identity()
     if current_user_id != id:
         return jsonify({"error": "Action non autorisée"}), 403
